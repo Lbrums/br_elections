@@ -91,44 +91,77 @@ def create_control_table(connection):
 
 def create_table(connection, table_name, columns):
     cursor = connection.cursor()
+
+    # Sanitiza os nomes das colunas
     columns = sanitize_column_names(columns)
     columns_def = ", ".join([f"{col} VARCHAR(255)" for col in columns])
+
     # Definir a chave primária
-    primary_key = (
-        "NR_ZONA, NR_SECAO, DT_PLEITO"  # Ajuste as colunas conforme necessário
-    )
+    primary_key = "NR_ZONA, NR_SECAO, CD_MUNICIPIO"  # Ajuste conforme necessário, usando colunas que existem
     sql_create = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         {columns_def},
-        UNIQUE KEY ({primary_key})  -- Evita duplicação
+        PRIMARY KEY ({primary_key})  -- Define chave primária com colunas existentes
     );
     """
     try:
         cursor.execute(sql_create)
         connection.commit()
-        print(f"Table '{table_name}' created or must exists.")
+        print(f"Tabela '{table_name}' criada ou já existe.")
     except mysql.connector.Error as error:
-        print(f"Error to create table: {error}")
+        print(f"Erro ao criar a tabela: {error}")
     finally:
         cursor.close()
 
 
 def insert_data(connection, table_name, data_path):
+    # Defina as colunas desejadas
+    desired_columns = [
+        "CD_PLEITO",
+        "NR_TURNO",
+        "DS_ELEICAO",
+        "SG_UF",
+        "CD_MUNICIPIO",
+        "NM_MUNICIPIO",
+        "NR_ZONA",
+        "NR_SECAO",
+        "CD_CARGO_PERGUNTA",
+        "DS_CARGO_PERGUNTA",
+        "NR_PARTIDO",
+        "SG_PARTIDO",
+        "NM_PARTIDO",
+        "DT_BU_RECEBIDO",
+        "QT_APTOS",
+        "QT_COMPARECIMENTO",
+        "QT_ABSTENCOES",
+        "NR_VOTAVEL",
+        "NM_VOTAVEL",
+        "QT_VOTOS",
+        "QT_ELEI_BIOM_SEM_HABILITACAO",
+    ]
+
     with open(data_path, "r", encoding="latin-1") as data_file:
         reader = csv.reader(data_file, delimiter=";")
         columns = next(reader)
-        create_table(connection, table_name, columns)
+
+        # Filtra as colunas, mantendo apenas as desejadas
+        filtered_columns = [col for col in columns if col in desired_columns]
+
+        # Criação da tabela com as colunas filtradas
+        create_table(connection, table_name, filtered_columns)
 
         data = []  # Lista para armazenar os dados a serem inseridos
         total_lines = 0  # Contador de linhas lidas
 
         cursor = connection.cursor()
-        placeholders = ", ".join(["%s"] * len(columns))
-        sql_insert = f"INSERT IGNORE INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+        placeholders = ", ".join(["%s"] * len(filtered_columns))
+        sql_insert = f"INSERT IGNORE INTO {table_name} ({', '.join(filtered_columns)}) VALUES ({placeholders})"
 
         try:
             for row in reader:
-                data.append(row)
+                # Filtra os dados da linha, mantendo apenas as colunas desejadas
+                filtered_row = [row[columns.index(col)] for col in filtered_columns]
+                data.append(filtered_row)
                 total_lines += 1
 
                 # A cada 1000 linhas, imprime o progresso
@@ -136,9 +169,7 @@ def insert_data(connection, table_name, data_path):
                     print(f"{total_lines} linhas processadas...")
 
                 # Quando atingir o tamanho do chunk, insira os dados
-                if (
-                    len(data) >= 15000
-                ):  # Usando o tamanho do chunk que você definiu anteriormente
+                if len(data) >= 15000:
                     cursor.executemany(sql_insert, data)
                     connection.commit()
                     print(f"Chunk de {len(data)} registros enviado.")
