@@ -12,24 +12,23 @@ config = {
     "ssl_disabled": True,
 }
 
-
-def chunk_data(data, chunk_size=15000):
-    """Divide os dados em blocos menores"""
-    for i in range(0, len(data), chunk_size):
-        yield data[i : i + chunk_size]
+# Valores padrão para colunas ausentes
+DEFAULT_VALUE = "NULL"  # Valor padrão para colunas ausentes
 
 
 def connect_to_db():
+    """Conecta ao banco de dados."""
     try:
         connection = mysql.connector.connect(**config)
-        print("Connection established.")
+        print("Conexão com o banco de dados estabelecida.")
         return connection
     except mysql.connector.Error as error:
-        print(f"Connection error: {error}")
+        print(f"Erro ao conectar ao banco de dados: {error}")
         return None
 
 
 def initialize_db():
+    """Inicializa o banco de dados."""
     try:
         connection = mysql.connector.connect(
             user=config["user"],
@@ -38,70 +37,23 @@ def initialize_db():
         )
         cursor = connection.cursor()
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config['database']};")
-        print(f"Database '{config['database']}', OK!")
+        print(f"Banco de dados '{config['database']}' criado/verificado com sucesso.")
     except mysql.connector.Error as error:
-        print(f"Error while initializing DB: {error}")
+        print(f"Erro ao inicializar o banco de dados: {error}")
     finally:
         if connection.is_connected():
             cursor.close()
             connection.close()
 
 
-def extract_state_from_filename(filename):
-    """Extrai o estado do nome do arquivo CSV"""
-    try:
-        parts = filename.split("_")
-        state = parts[2]  # Posição do estado no nome do arquivo
-        return state
-    except IndexError:
-        print(f"Erro ao extrair estado do arquivo: {filename}")
-        return None
-
-
-def sanitize_column_names(columns):
-    """Limpa e ajusta os nomes das colunas para o padrão do MySQL"""
-    sanitized_columns = []
-    for col in columns:
-        col = (
-            col.strip().replace('"', "").replace(";", "")
-        )  # Remove aspas e ponto-e-vírgula
-        col = col[:50]  # Trunca o nome da coluna para no máximo 50 caracteres
-        sanitized_columns.append(col)
-    return sanitized_columns
-
-
-def create_control_table(connection):
-    """Cria uma tabela para rastrear arquivos processados"""
-    cursor = connection.cursor()
-    sql_create = """
-    CREATE TABLE IF NOT EXISTS import_control (
-        filename VARCHAR(255) PRIMARY KEY,
-        import_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """
-    try:
-        cursor.execute(sql_create)
-        connection.commit()
-        print("Tabela de controle criada/verificada.")
-    except mysql.connector.Error as error:
-        print(f"Erro ao criar tabela de controle: {error}")
-    finally:
-        cursor.close()
-
-
 def create_table(connection, table_name, columns):
     cursor = connection.cursor()
+    columns_def = ", ".join([f"`{col}` VARCHAR(255)" for col in columns])
 
-    # Sanitiza os nomes das colunas
-    columns = sanitize_column_names(columns)
-    columns_def = ", ".join([f"{col} VARCHAR(255)" for col in columns])
-
-    # Definir a chave primária
-    primary_key = "NR_ZONA, NR_SECAO, CD_MUNICIPIO"  # Ajuste conforme necessário, usando colunas que existem
     sql_create = f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
-        {columns_def},
-        PRIMARY KEY ({primary_key})  -- Define chave primária com colunas existentes
+    CREATE TABLE IF NOT EXISTS `{table_name}` (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        {columns_def}
     );
     """
     try:
@@ -109,13 +61,27 @@ def create_table(connection, table_name, columns):
         connection.commit()
         print(f"Tabela '{table_name}' criada ou já existe.")
     except mysql.connector.Error as error:
-        print(f"Erro ao criar a tabela: {error}")
+        print(f"Erro ao criar a tabela '{table_name}': {error}")
     finally:
         cursor.close()
 
 
-def insert_data(connection, table_name, data_path):
-    # Defina as colunas desejadas
+def extract_state_from_filename(filename):
+    """Extrai o estado do nome do arquivo."""
+    try:
+        parts = filename.split("_")
+        state = parts[
+            2
+        ]  # Supondo que a posição do estado seja a terceira parte do nome
+        return state.upper()  # Retorna o estado em maiúsculas
+    except IndexError:
+        print(f"Erro ao extrair estado do arquivo: {filename}")
+        return None
+
+
+def process_and_insert_data(connection, table_name, data_path):
+    """Processa o arquivo CSV e insere os dados no banco."""
+    # Colunas desejadas
     desired_columns = [
         "CD_PLEITO",
         "NR_TURNO",
@@ -140,89 +106,78 @@ def insert_data(connection, table_name, data_path):
         "QT_ELEI_BIOM_SEM_HABILITACAO",
     ]
 
-    with open(data_path, "r", encoding="latin-1") as data_file:
-        reader = csv.reader(data_file, delimiter=";")
-        columns = next(reader)
+    total_lines = 0
+    inserted_lines = 0
 
-        # Filtra as colunas, mantendo apenas as desejadas
-        filtered_columns = [col for col in columns if col in desired_columns]
+    try:
+        with open(data_path, "r", encoding="latin-1") as data_file:
+            reader = csv.reader(data_file, delimiter=";")
+            file_columns = next(reader)  # Cabeçalho do arquivo CSV
 
-        # Criação da tabela com as colunas filtradas
-        create_table(connection, table_name, filtered_columns)
+            # Certifica-se de que a tabela contém todas as colunas desejadas
+            create_table(connection, table_name, desired_columns)
 
-        data = []  # Lista para armazenar os dados a serem inseridos
-        total_lines = 0  # Contador de linhas lidas
+            cursor = connection.cursor()
+            placeholders = ", ".join(["%s"] * len(desired_columns))
+            sql_insert = f"""
+INSERT IGNORE INTO `{table_name}` ({', '.join(desired_columns)}) 
+VALUES ({placeholders})
+"""
 
-        cursor = connection.cursor()
-        placeholders = ", ".join(["%s"] * len(filtered_columns))
-        sql_insert = f"INSERT IGNORE INTO {table_name} ({', '.join(filtered_columns)}) VALUES ({placeholders})"
+            batch = []  # Lote de dados a serem enviados
 
-        try:
             for row in reader:
-                # Filtra os dados da linha, mantendo apenas as colunas desejadas
-                filtered_row = [row[columns.index(col)] for col in filtered_columns]
-                data.append(filtered_row)
                 total_lines += 1
 
-                # A cada 1000 linhas, imprime o progresso
-                if total_lines % 1000 == 0:
-                    print(f"{total_lines} linhas processadas...")
+                # Cria uma linha completa com valores ausentes substituídos por DEFAULT_VALUE
+                completed_row = [
+                    (
+                        row[file_columns.index(col)].strip()
+                        if col in file_columns
+                        else DEFAULT_VALUE
+                    )
+                    for col in desired_columns
+                ]
 
-                # Quando atingir o tamanho do chunk, insira os dados
-                if len(data) >= 15000:
-                    cursor.executemany(sql_insert, data)
+                batch.append(completed_row)
+
+                # Insere em lotes de 15.000 registros
+                if len(batch) >= 15000:
+                    cursor.executemany(sql_insert, batch)
                     connection.commit()
-                    print(f"Chunk de {len(data)} registros enviado.")
-                    data.clear()  # Limpa a lista de dados para o próximo bloco
+                    inserted_lines += len(batch)
+                    print(f"{inserted_lines} linhas inseridas até agora.")
+                    batch.clear()
 
-            # Caso ainda haja dados restantes que não completaram um chunk
-            if data:
-                cursor.executemany(sql_insert, data)
+            # Insere os dados restantes
+            if batch:
+                cursor.executemany(sql_insert, batch)
                 connection.commit()
-                print(f"Último chunk de {len(data)} registros enviado.")
-        except mysql.connector.Error as error:
-            print(f"Error while inserting data: {error}")
-        finally:
-            cursor.close()
+                inserted_lines += len(batch)
+
+    except Exception as error:
+        print(f"Erro ao processar o arquivo {data_path}: {error}")
+    finally:
+        print(f"Total de linhas processadas no arquivo {data_path}: {total_lines}")
+        print(f"Total de linhas inseridas no banco: {inserted_lines}")
 
 
-def import_csvs_to_db(dir_foldercsv, connection):
-
-    # Chama a criação da tabela de controle antes de processar qualquer arquivo
-    create_control_table(connection)
-
-    for csv in os.listdir(dir_foldercsv):
-        if csv.endswith(".csv"):
-            state = extract_state_from_filename(csv)
+def import_csvs_to_db(directory, connection):
+    """Importa todos os arquivos CSV no diretório especificado."""
+    for csv_file in os.listdir(directory):
+        if csv_file.endswith(".csv"):
+            state = extract_state_from_filename(csv_file)
             if state:
-                data_path = os.path.join(dir_foldercsv, csv)
-
-                # Verifica se o arquivo já foi processado
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute(
-                    "SELECT filename FROM import_control WHERE filename = %s", (csv,)
-                )
-                result = cursor.fetchone()
-                if result:
-                    print(f"Arquivo '{csv}' já foi processado. Pulando...")
-                    continue
-
-                # Registra o arquivo como processado
-                cursor.execute(
-                    "INSERT INTO import_control (filename) VALUES (%s)", (csv,)
-                )
-                connection.commit()
-
                 table_name = state
-                print(f"\nImporting csv: {data_path}")
-                insert_data(connection, table_name, data_path)
+                data_path = os.path.join(directory, csv_file)
+                print(f"Processando arquivo: {csv_file} na tabela: {table_name}")
+                process_and_insert_data(connection, table_name, data_path)
 
 
-# Executando o script
 if __name__ == "__main__":
-    dir_folderscsv = "boletins_de_urna"
+    dir_foldercsv = "boletins_de_urna"
     initialize_db()
     connection = connect_to_db()
     if connection:
-        import_csvs_to_db(dir_folderscsv, connection)
+        import_csvs_to_db(dir_foldercsv, connection)
         connection.close()
