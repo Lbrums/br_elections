@@ -1,3 +1,5 @@
+from re import split
+from threading import local
 import boletins_de_urna as bu
 import csv as csv
 import os as os
@@ -95,11 +97,24 @@ def count_lines(file_path):
         return sum(1 for line in file)
 
 
-def columns_lines_count(file_path):
+def columns_count(file_path):
     with open(file_path, "r", encoding="latin-1") as file:
         colunas = file.readline().strip().replace('"', "").split(";")
-        print(f"Colunas: {colunas}")
-        print(f"Total de linhas: {count_lines(file_path)}")
+        return colunas
+
+
+def generate_report(file_path):
+    # Captura os nomes das colunas
+    columns = columns_count(file_path)
+    # Conta o número total de linhas
+    total_lines = count_lines(file_path) - 1
+
+    print(f"\nBoletim de Urna '{file_path}':")
+    print("-" * 30)
+    print(f"Total de linhas (excluindo o cabeçalho): {total_lines}")
+    print("\nNomes das Colunas:")
+    for index, column in enumerate(columns, start=1):
+        print(f"{index}: {column}")
 
 
 def split_lines(file_path):
@@ -122,18 +137,66 @@ def city_only(file_path, city):
             sys.exit(1)
 
 
-def candidates(data, city=None):
-    if city is None:
+def candidates(data, city=None, position=None, party=None):
+    if city is None and position is None and party is None:
         candidates = defaultdict(int)  # Default para int é 0
         for line in data:
             candidate = line[30]
             if candidate and candidate != "#NULO#":
                 candidates[candidate] += 1
         return candidates
-    else:
+    elif city is not None and position is None and party is None:
         candidates = defaultdict(int)
         for line in data:
             if line[12] == city:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    elif city is None and position is not None and party is None:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[17] == position:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    elif city is None and position is None and party is not None:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[20] == party:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    elif city is not None and position is not None and party is None:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[12] == city and line[17] == position:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    elif city is not None and position is None and party is not None:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[12] == city and line[20] == party:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    elif city is None and position is not None and party is not None:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[17] == position and line[20] == party:
+                candidate = line[30]
+                if candidate and candidate != "#NULO#":
+                    candidates[candidate] += 1
+        return candidates
+    else:
+        candidates = defaultdict(int)
+        for line in data:
+            if line[12] == city and line[17] == position and line[20] == party:
                 candidate = line[30]
                 if candidate and candidate != "#NULO#":
                     candidates[candidate] += 1
