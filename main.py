@@ -1,11 +1,10 @@
-from random import choice
-import select
 import sys
 import data_analysis
 import utils
 
 
 def main():
+    # Seleciona o arquivo, gera o relatório e faz a filtragem dos dados
     file = utils.select_file()
     utils.generate_report(file)
     data = utils.split_lines(file)
@@ -23,8 +22,13 @@ def main():
     print("10: Sair")
     print("11: para Limpar a Tela")
     print("\n")
-    option = int(input("Digite a opção desejada: "))
+    try:
+        option = int(input("Digite a opção desejada: "))
+    except ValueError:
+        print("Opção inválida")
+        main()
     print("\n")
+    # Switch case para as opções da interface
     match option:
         case 1:
             print("1. Candidatos de uma cidade específica")
@@ -149,7 +153,7 @@ def main():
                     print(line)
             else:  # choice == 0
                 main()
-        case 3:
+        case 3:  # Falta adicionar a opção de filtrar por cargo
             print("\n")
             print("Em uma cidade especifica?")
             print("1. SIM")
@@ -199,40 +203,30 @@ def main():
             pass
         case 5:
             pass
-        case 6:
+        case 6:  # Pode ser adicionado a filtragem por partido
             city = input("Digite o nome da cidade: ").upper()
-            print("\n")
-            print("1. Candidatos a prefeito")
-            print("2. candidatos a vereador")
-            print("3. Todos os candidatos")
-            print("0. Voltar ao menu principal")
-            choice = int(input("Digite a opção desejada: "))
-            if choice == 1:
-                print("\n")
-                print(data_analysis.city_votes(data, city, position="Prefeito"))
-            elif choice == 2:
-                print("\n")
-                print(data_analysis.city_votes(data, city, position="Vereador"))
-            elif choice == 3:
-                print("\n")
-                print(data_analysis.city_votes(data, city))
-            else:  # choice == 0
-                main()
+            print(data_analysis.city_votes(data, city))
         case 7:
             city = input("Digite o nome da cidade: ").upper()
-            candidate = input("Digite o nome do candidato: ")
+            candidate = input("Digite o nome do candidato: ").upper()
             print("\n")
-            print(data_analysis.city_votes(data, city, candidate))
+            print(
+                candidate,
+                "total de votos:",
+                data_analysis.city_votes(data, city, candidate),
+            )
         case 8:
             pass
         case 9:
-            data_analysis.create_resume(list(data))
+            data_analysis.create_resume(data)
         case 10:
             sys.exit(0)
         case 11:
             sys.stdout.write("\x1b[2J\x1b[H")
+            main()
         case _:
-            pass
+            print("Opção inválida")
+            main()
 
 
 if __name__ == "__main__":
