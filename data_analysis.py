@@ -1,10 +1,8 @@
-from numpy import isin, less
 import utils
 from collections import defaultdict
-import os
-import sys
 
 
+# Função para retornar o candidato com mais votos e o numero de votos
 def more_votes(data, city=None, party=None, position=None):
     # Dicionário para armazenar votos por candidato
     votes = defaultdict(int)
@@ -28,6 +26,7 @@ def more_votes(data, city=None, party=None, position=None):
     return candidate_with_most_votes, votes[candidate_with_most_votes]
 
 
+# Função para retornar os candidato com menos votos e o numero de votos(Geralmente 1 voto)
 def less_votes(data, city=None, party=None):
     # Dicionário para armazenar votos por candidato, cada chave terá uma lista com 2 elementos:
     # [total de votos, cidade associada]
@@ -76,10 +75,12 @@ def less_votes(data, city=None, party=None):
     return candidates_with_least_votes, least_votes
 
 
+# Função para retornar o total de votos de um candidato
 def total_candidates_with_one_vote(less_votes_data):
     return sum(len(candidates) for candidates in less_votes_data.values())
 
 
+# Função para retornar os votos de um partido nas cidades
 def cities_party_votes(data, party):
     # Para ordenar as cidades use:
     #         cities = sorted(
@@ -104,6 +105,7 @@ def cities_party_votes(data, party):
     return dict(city_votes_dict)  # Retorna o dicionário com os votos por cidade
 
 
+# Função na cidade com diversos opções de filtros
 def city_votes(
     data,
     city,
@@ -128,6 +130,7 @@ def city_votes(
     return total_votes
 
 
+# Função para retornar o total de votos no estado
 def total_votes(data):
     total_votes = 0
     for line in data:
@@ -136,6 +139,7 @@ def total_votes(data):
     return total_votes
 
 
+# Função para retornar o total de votos nulos
 def total_null_votes_percentage(data, position):
     # Variáveis para armazenar o total de votos e votos nulos
     total_votes_local = 0
@@ -148,6 +152,7 @@ def total_null_votes_percentage(data, position):
     return (total_null_votes / total_votes_local) * 100
 
 
+# Função para retornar o total de votos brancos
 def total_blank_votes_percentage(data, position):
     # Variáveis para armazenar o total de votos e votos em branco
     total_votes_local = 0
@@ -160,6 +165,7 @@ def total_blank_votes_percentage(data, position):
     return (total_blank_votes / total_votes_local) * 100
 
 
+# Função para retornar a porcentagem de votos brancos de uma cidade
 def blank_percentge(data, city, position):
     # Variáveis para armazenar o total de votos e votos em branco
     total_votes = city_votes(
@@ -175,6 +181,7 @@ def blank_percentge(data, city, position):
     return (blank_votes / total_votes) * 100
 
 
+# Função para retornar a porcentagem de votos nulos de uma cidade
 def null_percentage(data, city, position):
     # Variáveis para armazenar o total de votos e votos nulos
     total_votes = city_votes(data, city)
@@ -182,6 +189,7 @@ def null_percentage(data, city, position):
     return (null_votes / total_votes) * 100
 
 
+# Função para retornar a média proporcional de votos nulos
 def null_average_proportional(data, position, cities):
     # Pegar cada cidade que existir em line[12] passar as funções null_percentage() e total_votes() e fazer a média
     # dos valores retornados
@@ -193,6 +201,7 @@ def null_average_proportional(data, position, cities):
     return sum(null_percentages) / len(null_percentages)
 
 
+# Função para retornar a média proporcional de votos brancos
 def blank_average_proportional(data, position, cities):
     # Pegar cada cidade que existir em line[12] passar as funções blank_percentage() e total_votes() e fazer a média
     # dos valores retornados
@@ -204,7 +213,10 @@ def blank_average_proportional(data, position, cities):
     return sum(blank_percentages) / len(blank_percentages)
 
 
+# Função para criar um arquivo com dados selecionados
 def create_resume(data):
+    print("Criando variaveis locais para criação do arquivo.")
+    data = list(data)
     # Lista dos dados que serão inseridos
     datafile = []
 
